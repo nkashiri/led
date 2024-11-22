@@ -2,10 +2,6 @@
 //
 // This demo assumes the following ethercat slaves (in this order):
 // 0  0:0  Michael
-//
-//
-
-
 
 #include <errno.h>
 #include <signal.h>
@@ -20,12 +16,12 @@
 
 #include "ecrt.h"
 #include "slaves.h" // generated with the "ethercat cstruct" command
-#include "Michael.h" // ucontroller variables definition
+#include "Michael.h" // ucontroller variable definition
 
 /****************************************************************************/
 
 // Controls how often the cyclic_task() routine is called (in usec)
-#define FREQUENCY 1000 //1kHz
+#define FREQUENCY 100
 
 // If not 0, give this process a higher priority (requires root priv)
 #define PRIORITY 0
@@ -63,6 +59,7 @@ static MichaelStruct michael; // only slave
 
 const static ec_pdo_entry_reg_t domain1_regs[] = {
     // Slave 1: Michael
+
     {MichaelPos, Michael, 0x7000, 0x01, &michael.offset_pos_ref, &michael.bit_pos_pos_ref},
     {MichaelPos, Michael, 0x7000, 0x02, &michael.offset_vel_ref, &michael.bit_pos_vel_ref},
     {MichaelPos, Michael, 0x7000, 0x03, &michael.offset_tor_ref, &michael.bit_pos_tor_ref},
@@ -184,39 +181,14 @@ static void write_process_data_Michael() {
 }
 
 /****************************************************************************/
-static void write_process_data() {
-    write_process_data_Michael();
+/*static void write_process_data() {
+    write_process_data_michael();
 }
-
+*/
 static void read_process_data() {
-    
-    printf(" %u\n ",
-            //EC_READ_U32(domain1_pd + michael.offset_pos_ref), 
-            //EC_READ_U16(domain1_pd + michael.offset_vel_ref), 
-            //EC_READ_U16(domain1_pd + michael.offset_tor_ref),
-            //EC_READ_U16(domain1_pd + michael.offset_ImpPosPGain),
-            //EC_READ_U16(domain1_pd + michael.offset_ImpPosDGain),
-            //EC_READ_U16(domain1_pd + michael.offset_ImpTorPGain),
-            //EC_READ_U16(domain1_pd + michael.offset_ImpTorDGain),
-            //EC_READ_U16(domain1_pd + michael.offset_Gain4),
-            //EC_READ_U16(domain1_pd + michael.offset_fault_ack),
-            //EC_READ_U16(domain1_pd + michael.offset_ts),
-            //EC_READ_U16(domain1_pd + michael.offset_op_idx_aux),
-            //EC_READ_U32(domain1_pd + michael.offset_aux1),              
-            EC_READ_U32(domain1_pd + michael.offset_link_pos));          //12
-            //EC_READ_S32(domain1_pd + michael.offset_motor_pos),         //13
-            //EC_READ_S16(domain1_pd + michael.offset_link_vel));         //14
-            //EC_READ_U16(domain1_pd + michael.offset_motor_vel),         
-            //EC_READ_U32(domain1_pd + michael.offset_tor),               //15
-            //EC_READ_U16(domain1_pd + michael.offset_temperature),       //16
-            //EC_READ_U16(domain1_pd + michael.offset_fault),
-            //EC_READ_U16(domain1_pd + michael.offset_rtt),
-            //EC_READ_U16(domain1_pd + michael.offset_op_idx_ack),
-            ////EC_READ_U16(domain1_pd + michael.offset_aux2));
-       
-    //printf("Slave1 Out1: value %u\n", EC_READ_U16(domain1_pd + michael.offset_temperature)); 
+    printf("Slave1 Out1: value %u\n",
+            EC_READ_U16(domain1_pd + michael.offset_pos_ref));
 }
-
 /****************************************************************************/
 // ONCE THE MASTER IS ACTIVATED, THE APP IS IN CHARGE OF EXCHANGING DATA THROUGH
 // EXPLICIT CALLS TO THE ECRT LIBRARY (DONE IN THE IDLE STATE BY THE MASTER)
@@ -233,7 +205,7 @@ static void cyclic_task()
 
     if (counter) {
         counter--;
-    } else { // do this at 10 Hz
+    } else { // do this at 1 Hz
         counter = FREQUENCY;
 
         // check for master state (optional)
@@ -251,12 +223,9 @@ static void cyclic_task()
 
 #if 0
     // read process data
-    printf("Slave1 Out1: %u\n",
-            EC_READ_BIT(domain1_pd + michael.offset_pos_ref, michael.bit_pos_pos_ref));
+    printf("Slave1 Out1: value %u\n",
+            EC_READ_U16(domain1_pd + michael.offset_pos_ref));
 #endif
-
-    // write process data
-    //write_process_data();
 
     // read process data
     read_process_data();
@@ -357,10 +326,17 @@ int main(int argc, char **argv)
     printf("Configuring PDOs...\n");
     if (configure_pdo(&michael.config, slave_0_syncs, MichaelPos, Michael)) return -1;
 
+    // Create configuration for bus coupler
+    /*sc = ecrt_master_slave_config(master, BusCouplerPos, Beckhoff_EK1100);
+    if (!sc) {
+        return -1;
+    }
+    */
     if (ecrt_domain_reg_pdo_entry_list(domain1, domain1_regs)) {
         fprintf(stderr, "PDO entry registration failed!\n");
         return -1;
     }
+    
 
     // ACTIVATE THE MASTER. DO NOT APPLY ANY CONFIGURATION AFTER THIS, IT WON'T WORK
     printf("Activating master...\n");
@@ -369,8 +345,7 @@ int main(int argc, char **argv)
 
     // INITIALIZE THE PROCESS DOMAIN MEMORY (FOR USER-SPACE APPS)
     if (!(domain1_pd = ecrt_domain_data(domain1))) {
-        return -1;
-
+       return -1;
     }
 
 #if PRIORITY
@@ -391,7 +366,7 @@ int main(int argc, char **argv)
         gettimeofday(&t, NULL);
         printf("%u.%06u\n", t.tv_sec, t.tv_usec);
 #endif
-        
+
         while (sig_alarms != user_alarms) {
             cyclic_task();
             user_alarms++;
